@@ -52,22 +52,32 @@ class Detector(object):
         return results
 
 
-    def calc_output(self, output):
-        output = np.reshape(output, [self.cell_size, self.cell_size, self.box_per_cell, 5 + self.num_classes])
+    def calc_output(self, output)
+        # (f+20)*5  类别,位置都不共享    [13,13,125,1] -->  [13,13,5,25]
+        output = np.reshape(output, [self.cell_size, self.cell_size, self.box_per_cell, 5 + self.num_classes]
+        # [13,13,5,4] --> [13,13,5,4]  四个与边框有关
         boxes = np.reshape(output[:, :, :, :4], [self.cell_size, self.cell_size, self.box_per_cell, 4])    #boxes coordinate
+        # 解码 还原图片中的boxes
         boxes = self.get_boxes(boxes) * self.image_size
 
+        # 只取第四列,[13,13,5,1] --> [13,13,5]                   
         confidence = np.reshape(output[:, :, :, 4], [self.cell_size, self.cell_size, self.box_per_cell])    #the confidence of the each anchor boxes
+        # sigmoid
         confidence = 1.0 / (1.0 + np.exp(-1.0 * confidence))
+        # 扩展维度, [13,13,5] --> [13,13,5,20]
         confidence = np.tile(np.expand_dims(confidence, 3), (1, 1, 1, self.num_classes))
 
+        # 取出类别通道 [13,13,5,20]                
         classes = np.reshape(output[:, :, :, 5:], [self.cell_size, self.cell_size, self.box_per_cell, self.num_classes])    #classes
+        # softmax
         classes = np.exp(classes) / np.tile(np.expand_dims(np.sum(np.exp(classes), axis=3), axis=3), (1, 1, 1, self.num_classes))
 
+        # 得到置信度
         probs = classes * confidence
-
+       
         filter_probs = np.array(probs >= self.threshold, dtype = 'bool')
         filter_index = np.nonzero(filter_probs)
+        
         box_filter = boxes[filter_index[0], filter_index[1], filter_index[2]]
         probs_filter = probs[filter_probs]
         classes_num = np.argmax(filter_probs, axis = 3)[filter_index[0], filter_index[1], filter_index[2]]
@@ -96,7 +106,8 @@ class Detector(object):
 
         return results
 
-    def get_boxes(self, boxes):
+    def get_boxes(self, boxes):                          
+        # 计算delta x,  译码,还原公式
         offset = np.transpose(np.reshape(np.array([np.arange(self.cell_size)] * self.cell_size * self.box_per_cell),
                                          [self.box_per_cell, self.cell_size, self.cell_size]), (1, 2, 0))
         boxes1 = np.stack([(1.0 / (1.0 + np.exp(-1.0 * boxes[:, :, :, 0])) + offset) / self.cell_size,
